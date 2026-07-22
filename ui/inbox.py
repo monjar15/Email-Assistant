@@ -1,13 +1,3 @@
-"""
-Inbox list UI: displays the emails currently held in session state
-(populated by the "Refresh Inbox" fetch in app.py) inside a fixed-height,
-scrollable panel. Clicking an email selects it directly — there is no
-separate "Open" step; the row itself is the click target, and the
-selected row is highlighted.
-
-No persistence here — fetched emails live only in st.session_state for
-the current session, since there is no database in this phase.
-"""
 import streamlit as st
 
 from ui.styles import section_label
@@ -15,12 +5,36 @@ from ui.styles import section_label
 LIST_HEIGHT = 560  # px — fixed height; Streamlit adds a scrollbar past this
 
 
+def _as_conversations(emails):
+    # Fallback used when the caller hasn't passed `conversations`.
+    return [
+        {
+            "thread_id": e.get("uid", ""),
+            "subject": e.get("subject") or "(No Subject)",
+            "emails": [e],
+            "all_uids": [e["uid"]] if e.get("uid") else [],
+            "count": 1,
+            "latest_date": e.get("date", ""),
+            "latest_date_display": e.get("date_display", "Unknown"),
+            "participants": [p for p in (e.get("from"),) if p],
+            "is_thread": False,
+            "all_mail_folder": None,
+        }
+        for e in emails
+    ]
+
+
 def render_inbox(emails, total: int = 0, offset: int = 0, limit: int = 50,
                   loading: bool = False, checked_uids=None,
-                  search_active: bool = False) -> dict:
+                  search_active: bool = False, conversations=None,
+                  can_prev: bool = None, can_next: bool = None,
+                  conv_offset: int = 0, total_conversations: int = None,
+                  total_conversations_is_estimate: bool = True) -> dict:
 
     if checked_uids is None:
         checked_uids = set()
+
+    conversations = conversations if conversations is not None else _as_conversations(emails)
 
     # Row 1: section label + refresh icon (only 2 columns — plenty of room)
     col_label, col_refresh = st.columns([0.85, 0.15])
@@ -54,7 +68,7 @@ def render_inbox(emails, total: int = 0, offset: int = 0, limit: int = 50,
         with col_range:
             st.markdown(
                 f'<div class="item-meta" style="padding-top: 0.5rem; white-space: nowrap;">'
-                f'{len(emails)} result{"s" if len(emails) != 1 else ""}</div>',
+                f'{len(conversations)} result{"s" if len(conversations) != 1 else ""}</div>',
                 unsafe_allow_html=True,
             )
         with col_clear:
@@ -65,25 +79,31 @@ def render_inbox(emails, total: int = 0, offset: int = 0, limit: int = 50,
         prev_clicked = False
         next_clicked = False
     else:
-        start = offset + 1 if total > 0 and emails else 0
-        end = offset + len(emails)
+        start = conv_offset + 1 if total > 0 and conversations else 0
+        end = conv_offset + len(conversations)
+
+        display_total = total_conversations if total_conversations is not None else total
+        tilde = "~" if total_conversations_is_estimate else ""
 
         col_range, col_prev, col_next = st.columns([0.68, 0.16, 0.16], gap="small")
         with col_range:
             st.markdown(
                 f'<div class="item-meta" style="padding-top: 0.5rem; white-space: nowrap;">'
-                f'{start}\u2013{end} of {total:,}</div>',
+                f'{start}\u2013{end} of {tilde}{display_total:,}</div>',
                 unsafe_allow_html=True,
             )
+        prev_allowed = can_prev if can_prev is not None else (offset > 0)
+        next_allowed = can_next if can_next is not None else (offset + limit < total)
+
         with col_prev:
             prev_clicked = st.button(
                 "\u2039", key="inbox_prev_page", help="Previous page",
-                use_container_width=True, disabled=(loading or offset <= 0),
+                use_container_width=True, disabled=(loading or not prev_allowed),
             )
         with col_next:
             next_clicked = st.button(
                 "\u203a", key="inbox_next_page", help="Next page",
-                use_container_width=True, disabled=(loading or offset + limit >= total),
+                use_container_width=True, disabled=(loading or not next_allowed),
             )
 
     actions = {
@@ -104,28 +124,39 @@ def render_inbox(emails, total: int = 0, offset: int = 0, limit: int = 50,
 
     new_checked = set()
     with st.container(height=LIST_HEIGHT, border=False):
-        for e in emails:
-            is_selected = st.session_state.get("selected_uid") == e["uid"]
+        for conv in conversations:
+            thread_uids = conv.get("all_uids") or [m["uid"] for m in conv["emails"]]
+            latest = conv["emails"][0]
+            is_selected = (
+                st.session_state.get("selected_thread_id") == conv["thread_id"]
+                or st.session_state.get("selected_uid") in thread_uids
+            )
 
-            # Side checkbox (Gmail-style multi-select) + subject-only row.
+            conv_checked = bool(thread_uids) and all(u in checked_uids for u in thread_uids)
+
+            # Side checkbox (Gmail-style multi-select) + subject row.
             col_check, col_row = st.columns([0.12, 0.88], gap="small")
             with col_check:
                 checked = st.checkbox(
-                    "Select", key=f"chk_{e['uid']}", value=e["uid"] in checked_uids,
+                    "Select", key=f"chk_{conv['thread_id']}", value=conv_checked,
                     disabled=loading, label_visibility="collapsed",
                 )
                 if checked:
-                    new_checked.add(e["uid"])
+                    new_checked.update(thread_uids)
             with col_row:
+                subject = conv["subject"] or "(No Subject)"
+                badge = f"  ({conv['count']})" if conv["is_thread"] else ""
+                from_label = latest.get("from", "")
                 clicked = st.button(
-                    f"{e['subject'] or '(No Subject)'}  \n{e['from']}",
-                    key=f"email_{e['uid']}",
+                    f"{subject}{badge}  \n{from_label}",
+                    key=f"conv_{conv['thread_id']}",
                     use_container_width=True,
                     type="primary" if is_selected else "secondary",
                     disabled=loading,
                 )
                 if clicked:
-                    st.session_state.selected_uid = e["uid"]
+                    st.session_state.selected_uid = latest["uid"]
+                    st.session_state.selected_thread_id = conv["thread_id"]
                     st.rerun()
 
     actions["checked_uids"] = new_checked

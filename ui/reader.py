@@ -1,8 +1,3 @@
-"""
-Email reader UI: displays the full subject, sender, date, and body of
-whichever fetched email the user selected in the inbox list, rendered
-in the right-hand content panel next to that list.
-"""
 import base64
 import html as html_lib
 import re
@@ -51,28 +46,54 @@ def _safe_download_filename(name: str, fallback: str) -> str:
     return cleaned or fallback
 
 
-def render_reader(email_data, attachments=None):
+def render_reader(thread):
     st.markdown(section_label("Email Content"), unsafe_allow_html=True)
 
-    if email_data is None:
+    if not thread:
         st.markdown(
             '<div class="empty-state">Select an email from the list to view it here.</div>',
             unsafe_allow_html=True,
         )
         return
 
-    initial, avatar_color = _sender_avatar(email_data["from"])
+    latest = thread[0]["email"]
+    count = len(thread)
+    badge_html = (
+        f'<span style="margin-left:8px; padding:2px 8px; border-radius:10px; '
+        f'background:#3a3a3a; color:#bdbdbd; font-size:0.75rem; vertical-align:middle;">'
+        f'{count} messages</span>'
+        if count > 1 else ""
+    )
+
+    # Subject and the newest message's from/date row share one wrapper,
+    # same as the original single-message layout — splitting them into
+    # separate blocks drops the styling context and misaligns the row.
+    initial, avatar_color = _sender_avatar(latest["from"])
     st.markdown(
         f'<div class="reader-header">'
-        f'<div class="reader-subject">{email_data["subject"]}</div>'
+        f'<div class="reader-subject">{latest["subject"]}{badge_html}</div>'
         f'<div class="reader-meta-row">'
         f'<div class="reader-avatar" style="background:{avatar_color};">{initial}</div>'
-        f'<div class="reader-meta">From {email_data["from"]} &middot; {email_data["date_display"]}</div>'
+        f'<div class="reader-meta">From {latest["from"]} &middot; {latest["date_display"]}</div>'
         f'</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
+    _render_message(latest, thread[0]["attachments"])
+
+    if count > 1:
+        # Every older message collapsed into a one-line summary — click
+        # to expand, same as Gmail's conversation view.
+        for msg in thread[1:]:
+            email_data = msg["email"]
+            attachments = msg["attachments"]
+            summary = f'{email_data["from"]}  \u00b7  {email_data["date_display"]}'
+            with st.expander(summary, expanded=False):
+                _render_message(email_data, attachments)
+
+
+def _render_message(email_data, attachments=None):
     if email_data.get("body_html"):
         components.html(
             f"""
