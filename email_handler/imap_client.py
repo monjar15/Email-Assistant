@@ -8,7 +8,7 @@ from typing import List, Dict, Optional
 
 
 class IMAPClient:
-    #Thin wrapper around imaplib for the email assistant's needs."""
+    #Thin wrapper around imaplib for the email assistant's needs.
 
     def __init__(self, server: str, port: int, email_address: str, password: str):
         self.server = server
@@ -23,7 +23,7 @@ class IMAPClient:
         self._page_cache: Dict[int, Dict] = {}
 
     def connect(self) -> bool:
-        #Open a connection and log in. Raises ConnectionError on failure."""
+        #Open a connection and log in. Raises ConnectionError on failure.
         try:
             self.conn = imaplib.IMAP4_SSL(self.server, self.port)
             self.conn.login(self.email_address, self.password)
@@ -49,27 +49,6 @@ class IMAPClient:
     def reconnect(self):
         self.disconnect()
         self.connect()
-
-    def list_folders(self) -> List[str]:
-        self.ensure_connection()
-
-        try:
-            status, folders = self.conn.list()
-        except (ssl.SSLEOFError, imaplib.IMAP4.abort, OSError):
-            self.reconnect()
-            status, folders = self.conn.list()
-
-        result = []
-
-        if status == "OK":
-            for f in folders:
-                parts = f.decode(errors="ignore").split('"')
-                if len(parts) >= 3:
-                    result.append(parts[-2].strip())
-                else:
-                    result.append(f.decode(errors="ignore"))
-
-        return result
 
     def fetch_inbox(
         self,
@@ -206,12 +185,13 @@ class IMAPClient:
                 return part[1]
 
         return None
-    
-    def _fetch_raw_batch(self, msg_ids: List[bytes]) -> Dict[bytes, bytes]:
-        return self._fetch_batch(msg_ids, "(RFC822)")
 
     def _fetch_headers_batch(self, msg_ids: List[bytes]) -> Dict[bytes, bytes]:
-        return self._fetch_batch(msg_ids, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])")
+        return self._fetch_batch(
+            msg_ids,
+            "(BODY.PEEK[HEADER.FIELDS "
+            "(SUBJECT FROM TO DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])",
+        )
 
     def _fetch_batch(self, msg_ids: List[bytes], fetch_item: str) -> Dict[bytes, bytes]:
         if not msg_ids:
