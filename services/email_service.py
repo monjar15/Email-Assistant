@@ -1,5 +1,6 @@
 # Email service: fetch, parse, cache, search, and one-time full sync.
 from email_handler.email_parser import parse_email
+from email_handler.email_threading import build_conversations
 
 
 def refresh_inbox(client, limit: int, offset: int = 0, refresh: bool = False,
@@ -13,6 +14,7 @@ def refresh_inbox(client, limit: int, offset: int = 0, refresh: bool = False,
         result = {
             "success": True,
             "emails": parsed,
+            "conversations": conversations,
             "total": page["total"],
             "has_more": page["has_more"],
         }

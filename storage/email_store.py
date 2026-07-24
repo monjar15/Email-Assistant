@@ -286,6 +286,8 @@ class EmailStore:
                 e.get("date", ""),
                 e.get("date_display", ""),
                 e.get("snippet", ""),
+                e.get("thread_id", ""), e.get("message_id", ""),
+                e.get("in_reply_to", ""), " ".join(e.get("references") or []),
             )
             for e in parsed_emails
         ]

@@ -2,6 +2,10 @@
 #raw email messages from a mail server.
 
 import ssl
+#IMAP client wrapper: handles connecting, listing folders, and fetching
+#raw email messages from a mail server.
+
+import ssl
 import imaplib
 import re
 from typing import List, Dict, Optional
@@ -91,6 +95,10 @@ class IMAPClient:
                 self._page_cache = {}
                 self._id_list_folder = folder
                 self._known_total = total
+            if refresh or self._id_list_folder != folder or self._known_total != total:
+                self._page_cache = {}
+                self._id_list_folder = folder
+                self._known_total = total
 
             if not refresh and offset in self._page_cache:
                 return self._page_cache[offset]
@@ -133,13 +141,29 @@ class IMAPClient:
 
             page_ids = [str(i).encode() for i in range(start + 1, end + 1)]
             page_ids.reverse()
+            page_ids = [str(i).encode() for i in range(start + 1, end + 1)]
+            page_ids.reverse()
 
+            header_by_id = self._fetch_headers_batch(page_ids)
             header_by_id = self._fetch_headers_batch(page_ids)
 
         emails = []
         for msg_id in page_ids:
             raw = header_by_id.get(msg_id)
             if raw:
+                emails.append(
+                    {
+                        "uid": msg_id.decode(),
+                        "raw": raw,
+                    }
+                )
+
+        result = {
+            "emails": emails,
+            "total": total,
+            "has_more": start > 0,
+        }
+
                 emails.append(
                     {
                         "uid": msg_id.decode(),
@@ -160,8 +184,15 @@ class IMAPClient:
     def get_message_count(self, folder: str = "INBOX") -> Optional[int]:
         self.ensure_connection()
 
+        self.ensure_connection()
+
         try:
             status, data = self.conn.status(folder, "(MESSAGES)")
+        except (ssl.SSLEOFError, imaplib.IMAP4.abort, OSError):
+            self.reconnect()
+            status, data = self.conn.status(folder, "(MESSAGES)")
+
+        if status != "OK" or not data or not data[0]:
         except (ssl.SSLEOFError, imaplib.IMAP4.abort, OSError):
             self.reconnect()
             status, data = self.conn.status(folder, "(MESSAGES)")
@@ -191,17 +222,37 @@ class IMAPClient:
                 return None
 
             return self._fetch_raw(uid.encode())
+        self.ensure_connection()
+
+        try:
+            status, _ = self.conn.select(folder)
+            if status != "OK":
+                return None
+        
+            return self._fetch_raw(uid.encode())
+
+        except (ssl.SSLEOFError, imaplib.IMAP4.abort, OSError):
+            self.reconnect()
+
+            status, _ = self.conn.select(folder)
+            if status != "OK":
+                return None
+
+            return self._fetch_raw(uid.encode())
 
     # Fetch raw content for one message ID.
     def _fetch_raw(self, msg_id: bytes) -> Optional[bytes]:
         status, msg_data = self.conn.fetch(msg_id, "(RFC822)")
 
+
         if status != "OK":
             return None
+
 
         for part in msg_data:
             if isinstance(part, tuple):
                 return part[1]
+
 
         return None
 
@@ -220,21 +271,26 @@ class IMAPClient:
 
         id_set = b",".join(msg_ids)
 
+
         status, msg_data = self.conn.fetch(id_set, fetch_item)
         if status != "OK":
             return {}
 
         results: Dict[bytes, bytes] = {}
 
+
         for part in msg_data:
             if not isinstance(part, tuple):
                 continue
 
+
             header, raw = part[0], part[1]
             seq = header.split(b" ", 1)[0]
 
+
             if seq.isdigit():
                 results[seq] = raw
+
 
         return results
 
