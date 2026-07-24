@@ -1,13 +1,8 @@
 """
-Central configuration for the AI Email Assistant (login + fetch phase).
+Central configuration for the AI Email Assistant.
 """
 
-# --------------------------------------------------------------------------
-# IMAP settings — supports any IMAP-capable provider.
-# KNOWN_PROVIDERS maps common email domains to known-good host/port so
-# login can skip autodiscovery. Any domain not listed here falls through
-# to live autodiscovery in email_handler/provider_detect.py.
-# --------------------------------------------------------------------------
+# Known IMAP providers used before live autodetection.
 KNOWN_PROVIDERS = {
     "gmail.com":      {"server": "imap.gmail.com",        "port": 993},
     "googlemail.com": {"server": "imap.gmail.com",        "port": 993},
@@ -23,7 +18,5 @@ KNOWN_PROVIDERS = {
     "gmx.com":        {"server": "imap.gmx.com",           "port": 993},
 }
 
-# --------------------------------------------------------------------------
-# App behavior
-# --------------------------------------------------------------------------
+# App settings.
 MAX_EMAILS_FETCH = 50

@@ -1,132 +1,181 @@
-"""
-Inbox list UI: displays the emails currently held in session state
-(populated by the "Refresh Inbox" fetch in app.py) inside a fixed-height,
-scrollable panel. Clicking an email selects it directly — there is no
-separate "Open" step; the row itself is the click target, and the
-selected row is highlighted.
-
-No persistence here — fetched emails live only in st.session_state for
-the current session, since there is no database in this phase.
-"""
 import streamlit as st
 
 from ui.styles import section_label
 
-LIST_HEIGHT = 560  # px — fixed height; Streamlit adds a scrollbar past this
+LIST_HEIGHT = 700
 
 
-def render_inbox(emails, total: int = 0, offset: int = 0, limit: int = 50,
+# Update search actions when the query changes.
+def _handle_search_input_change():
+    query = st.session_state.get("inbox_search_query", "").strip()
+    st.session_state.inbox_search_submit = bool(query)
+    st.session_state.inbox_search_clear = not bool(query)
+
+
+# Clear the search box and restore the inbox.
+def _clear_search_input():
+    st.session_state.inbox_search_query = ""
+    st.session_state.inbox_search_clear = True
+    st.session_state.inbox_search_submit = False
+
+
+# Render the inbox toolbar and email list.
+def render_inbox(emails, total: int = 0, offset: int = 0,
                   loading: bool = False, checked_uids=None,
-                  search_active: bool = False) -> dict:
-
+                  search_active: bool = False, search_total: int = 0,
+                  can_prev: bool = None, can_next: bool = None) -> dict:
     if checked_uids is None:
         checked_uids = set()
 
-    # Row 1: section label + refresh icon (only 2 columns — plenty of room)
-    col_label, col_refresh = st.columns([0.85, 0.15])
-    with col_label:
+    with st.container(key="inbox_toolbar"):
         st.markdown(section_label("Inbox"), unsafe_allow_html=True)
-    with col_refresh:
-        refresh_clicked = st.button(
-            "\u21bb", key="refresh_inbox_icon", help="Refresh inbox",
-            use_container_width=True, disabled=loading,
-        )
 
-    # Row 2: search box + search button. Submitting via Enter (the text
-    # input's own on_change) or clicking the button both count as "search".
-    col_query, col_search_btn = st.columns([0.87, 0.13], gap="small")
-    with col_query:
-        query = st.text_input(
-            "Search", key="inbox_search_query", placeholder="Search subject or sender\u2026",
-            label_visibility="collapsed", disabled=loading,
+        # Keep toolbar buttons visible in narrow inbox panels.
+        col_query, col_clear_btn, col_search_btn = st.columns(
+            [0.80, 0.09, 0.11], gap="small"
         )
-    with col_search_btn:
-        search_clicked = st.button(
-            "\U0001F50D", key="inbox_search_btn", help="Search",
-            use_container_width=True, disabled=loading,
-        )
+        with col_query:
+            query = st.text_input(
+                "Search",
+                key="inbox_search_query",
+                placeholder="Search mail",
+                label_visibility="collapsed",
+                disabled=loading,
+                on_change=_handle_search_input_change,
+            )
+        with col_clear_btn:
+            if query.strip():
+                st.button(
+                    "✕",
+                    key="inbox_clear_search_icon",
+                    use_container_width=True,
+                    disabled=loading,
+                    on_click=_clear_search_input,
+                )
+        with col_search_btn:
+            search_clicked = st.button(
+                "🔍",
+                key="inbox_search_btn",
+                use_container_width=True,
+                disabled=loading,
+            )
 
-    # Row 3: page range + prev/next while browsing normally, or a "back
-    # to inbox" link while showing search results (which aren't paginated).
-    clear_search_clicked = False
-    if search_active:
-        col_range, col_clear = st.columns([0.68, 0.32], gap="small")
-        with col_range:
-            st.markdown(
-                f'<div class="item-meta" style="padding-top: 0.5rem; white-space: nowrap;">'
-                f'{len(emails)} result{"s" if len(emails) != 1 else ""}</div>',
-                unsafe_allow_html=True,
-            )
-        with col_clear:
-            clear_search_clicked = st.button(
-                "\u2190 Back to inbox", key="inbox_clear_search",
-                use_container_width=True, disabled=loading,
-            )
+        submitted_by_input = st.session_state.pop("inbox_search_submit", False)
+        cleared_by_input = st.session_state.pop("inbox_search_clear", False)
+
+        refresh_clicked = False
         prev_clicked = False
         next_clicked = False
-    else:
-        start = offset + 1 if total > 0 and emails else 0
-        end = offset + len(emails)
 
-        col_range, col_prev, col_next = st.columns([0.68, 0.16, 0.16], gap="small")
-        with col_range:
+        if search_active:
+            shown = len(emails)
+            label = f"{search_total:,} result{'s' if search_total != 1 else ''}"
+            if search_total > shown:
+                label += f" · showing first {shown:,}"
             st.markdown(
-                f'<div class="item-meta" style="padding-top: 0.5rem; white-space: nowrap;">'
-                f'{start}\u2013{end} of {total:,}</div>',
+                f'<div class="item-meta inbox-range-label">{label}</div>',
                 unsafe_allow_html=True,
             )
-        with col_prev:
-            prev_clicked = st.button(
-                "\u2039", key="inbox_prev_page", help="Previous page",
-                use_container_width=True, disabled=(loading or offset <= 0),
+        else:
+            start = offset + 1 if total > 0 and emails else 0
+            end = offset + len(emails)
+            prev_allowed = can_prev if can_prev is not None else offset > 0
+            next_allowed = (
+                can_next if can_next is not None else offset + len(emails) < total
             )
-        with col_next:
-            next_clicked = st.button(
-                "\u203a", key="inbox_next_page", help="Next page",
-                use_container_width=True, disabled=(loading or offset + limit >= total),
+
+            col_range, col_refresh, col_prev, col_next = st.columns(
+                [0.64, 0.12, 0.12, 0.12], gap="small"
             )
+            with col_range:
+                st.markdown(
+                    f'<div class="item-meta inbox-range-label">'
+                    f'{start}–{end} of {total:,}</div>',
+                    unsafe_allow_html=True,
+                )
+            with col_refresh:
+                refresh_clicked = st.button(
+                    "🔄",
+                    key="refresh_inbox_icon",
+                    help="Refresh inbox",
+                    use_container_width=True,
+                    disabled=loading,
+                )
+            with col_prev:
+                prev_clicked = st.button(
+                    "‹",
+                    key="inbox_prev_page",
+                    help="Previous page",
+                    use_container_width=True,
+                    disabled=(loading or not prev_allowed),
+                )
+            with col_next:
+                next_clicked = st.button(
+                    "›",
+                    key="inbox_next_page",
+                    help="Next page",
+                    use_container_width=True,
+                    disabled=(loading or not next_allowed),
+                )
 
     actions = {
         "refresh": refresh_clicked,
         "prev": prev_clicked,
         "next": next_clicked,
-        "search": search_clicked,
-        "clear_search": clear_search_clicked,
+        "search": search_clicked or submitted_by_input,
+        "clear_search": cleared_by_input,
         "query": query,
         "checked_uids": set(checked_uids),
     }
 
     if not emails:
-        empty_msg = "No emails match that search." if search_active else \
-            "No emails fetched yet. Click the refresh icon above."
-        st.markdown(f'<div class="empty-state">{empty_msg}</div>', unsafe_allow_html=True)
+        empty_msg = (
+            "No emails match that search."
+            if search_active
+            else "No emails are available in the local inbox yet."
+        )
+        st.markdown(
+            f'<div class="empty-state">{empty_msg}</div>', unsafe_allow_html=True
+        )
         return actions
 
     new_checked = set()
-    with st.container(height=LIST_HEIGHT, border=False):
-        for e in emails:
-            is_selected = st.session_state.get("selected_uid") == e["uid"]
+    with st.container(height=LIST_HEIGHT, border=False, key="inbox_list_scroll"):
+        for email_item in emails:
+            uid = str(email_item.get("uid", ""))
+            is_selected = st.session_state.get("selected_uid") == uid
 
-            # Side checkbox (Gmail-style multi-select) + subject-only row.
-            col_check, col_row = st.columns([0.12, 0.88], gap="small")
+            col_check, col_row = st.columns([0.045, 0.955], gap="small")
             with col_check:
                 checked = st.checkbox(
-                    "Select", key=f"chk_{e['uid']}", value=e["uid"] in checked_uids,
-                    disabled=loading, label_visibility="collapsed",
+                    "Select",
+                    key=f"chk_{uid}",
+                    value=uid in checked_uids,
+                    disabled=loading,
+                    label_visibility="collapsed",
                 )
                 if checked:
-                    new_checked.add(e["uid"])
+                    new_checked.add(uid)
+
             with col_row:
+                subject = email_item.get("subject") or "(No Subject)"
+                from_label = email_item.get("from", "")
                 clicked = st.button(
-                    f"{e['subject'] or '(No Subject)'}  \n{e['from']}",
-                    key=f"email_{e['uid']}",
+                    f"{subject}  \n{from_label}",
+                    key=f"email_{uid}",
                     use_container_width=True,
                     type="primary" if is_selected else "secondary",
                     disabled=loading,
                 )
                 if clicked:
-                    st.session_state.selected_uid = e["uid"]
+                    st.session_state.selected_uid = uid
                     st.rerun()
+
+        # Keep the final card above the scroll container edge.
+        st.markdown(
+            '<div class="inbox-list-bottom-spacer" aria-hidden="true"></div>',
+            unsafe_allow_html=True,
+        )
 
     actions["checked_uids"] = new_checked
     return actions

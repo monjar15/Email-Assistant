@@ -1,7 +1,3 @@
-"""
-Parses raw RFC822 email bytes (as returned by IMAPClient.fetch_inbox) into
-a clean, structured dictionary the UI can display.
-"""
 import base64
 import email as stdlib_email
 import re
@@ -10,6 +6,7 @@ from email.utils import parsedate_to_datetime
 from typing import Dict, Optional
 
 
+# Decode an email header value.
 def _decode(value: Optional[str]) -> str:
     if not value:
         return ""
@@ -23,6 +20,7 @@ def _decode(value: Optional[str]) -> str:
     return result
 
 
+# Convert HTML content to plain text.
 def _strip_html(html: str) -> str:
     text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
@@ -30,6 +28,8 @@ def _strip_html(html: str) -> str:
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
+
+# Remove unsafe HTML before display.
 def _sanitize_html(html: str) -> str:
 
     html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
@@ -48,6 +48,8 @@ def _sanitize_html(html: str) -> str:
     )
     return html
 
+
+# Replace CID image links with embedded data.
 def _resolve_inline_images(html: str, cid_images: Dict[str, tuple]) -> str:
 
     for cid_key, (content_type, payload) in cid_images.items():

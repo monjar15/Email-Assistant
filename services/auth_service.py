@@ -5,10 +5,7 @@ from email_handler.provider_detect import detect_provider
 
 
 def login(email_address: str, password: str, server: str = None, port: int = None) -> dict:
-    # Validate credentials, auto-detect the IMAP server for the address's
-    # domain (unless server/port were explicitly supplied), then attempt
-    # an IMAP connection.
-
+    # Validate the account and connect to its IMAP server.
     if not email_address or not password:
         return {"success": False, "error": "Please enter both your email address and password."}
 
@@ -33,6 +30,6 @@ def login(email_address: str, password: str, server: str = None, port: int = Non
         return {"success": False, "error": f"Login failed: {e}"}
 
 def logout(client) -> None:
-    # Disconnect the IMAP client, if one exists. Safe to call with None.
+    # Disconnect the IMAP client when one exists.
     if client:
         client.disconnect()

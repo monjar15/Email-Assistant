@@ -12,9 +12,10 @@ from typing import Optional, Dict
 
 from config import KNOWN_PROVIDERS
 
-_CONNECT_TIMEOUT = 4  # seconds
+_CONNECT_TIMEOUT = 4  # Connection timeout in seconds.
 
 
+# Extract the domain from an email address.
 def _domain_of(email_address: str) -> Optional[str]:
     if not email_address or "@" not in email_address:
         return None
@@ -36,7 +37,7 @@ def _probe(server: str, port: int) -> bool:
 def _srv_lookup(domain: str) -> Optional[Dict]:
     """Try the RFC 6186 IMAP-over-TLS autoconfig SRV record."""
     try:
-        import dns.resolver  # optional dependency; degrades gracefully if absent
+        import dns.resolver  # Skip DNS lookup when the package is unavailable.
         answers = dns.resolver.resolve(f"_imaps._tcp.{domain}", "SRV")
         best = sorted(answers, key=lambda r: (r.priority, r.weight))[0]
         return {"server": str(best.target).rstrip("."), "port": int(best.port)}

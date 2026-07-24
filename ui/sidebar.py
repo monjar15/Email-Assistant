@@ -10,12 +10,12 @@ import streamlit as st
 
 from email_handler.provider_detect import detect_provider
 from services.auth_service import login, logout
-from services.session_store import create_session, delete_session
+from storage.session_store import create_session, delete_session
 from ui.styles import section_label
 
 
-def render_login_form() -> bool:
-    # Render the universal IMAP login form. Returns True if just logged in.
+def render_login_form():
+    # Render the universal IMAP login form.
     st.markdown(section_label("Email Login"), unsafe_allow_html=True)
 
     email_address = st.text_input(
@@ -32,7 +32,7 @@ def render_login_form() -> bool:
 
     manual_server, manual_port = None, None
     if detection and detection["supported"]:
-        st.caption(f"Detected: connects to {detection['server']}:{detection['port']}")
+        pass
     elif detection and not detection["supported"]:
         st.warning(
             "We couldn't automatically detect IMAP settings for this address. "
@@ -74,25 +74,35 @@ def render_login_form() -> bool:
             st.rerun()
         else:
             st.error(result["error"])
-            return False
-    return False
 
 
+# Render logout and clear the current account state.
 def render_logout_button():
     if st.button("Logout", use_container_width=True):
         logout(st.session_state.get("imap_client"))
         delete_session(st.session_state.get("session_token"))
+        email_store = st.session_state.get("email_store")
+        if email_store is not None:
+            try:
+                email_store.close()
+            except Exception:
+                pass
         st.query_params.clear()
         for key in [
             "imap_client", "logged_in", "email_address", "session_token",
+            "email_store", "active_store_account",
             "selected_uid", "emails", "inbox_loaded", "email_bodies",
-            "inbox_offset", "inbox_total", "loading", "pending_action",
-            "pending_offset", "last_mail_check", "new_mail_count",
+            "inbox_offset", "inbox_total", "inbox_has_more", "loading",
+            "last_mail_check", "new_mail_count", "checked_uids",
+            "search_active", "search_results", "search_total",
+            "full_synced", "full_sync_attempted", "inbox_search_query",
+            "inbox_search_submit", "inbox_search_clear",
         ]:
             st.session_state.pop(key, None)
         st.rerun()
 
 
+# Show the signed-in email address.
 def render_status():
     st.divider()
     st.markdown(section_label("Signed In As"), unsafe_allow_html=True)
