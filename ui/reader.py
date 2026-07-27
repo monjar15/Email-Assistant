@@ -68,14 +68,17 @@ def render_reader(message):
 
         email_data = message["email"]
         attachments = message.get("attachments") or []
-        initial, avatar_color = _sender_avatar(email_data.get("from", ""))
+        sender = email_data.get("from", "")
+        subject = email_data.get("subject") or "(No Subject)"
+        date_display = email_data.get("date_display", "Unknown")
+        initial, avatar_color = _sender_avatar(sender)
         st.markdown(
             f'<div class="reader-header">'
-            f'<div class="reader-subject">{email_data.get("subject") or "(No Subject)"}</div>'
+            f'<div class="reader-subject">{html_lib.escape(subject)}</div>'
             f'<div class="reader-meta-row">'
-            f'<div class="reader-avatar" style="background:{avatar_color};">{initial}</div>'
-            f'<div class="reader-meta">From {email_data.get("from", "")} &middot; '
-            f'{email_data.get("date_display", "Unknown")}</div>'
+            f'<div class="reader-avatar" style="background:{avatar_color};">{html_lib.escape(initial)}</div>'
+            f'<div class="reader-meta">From {html_lib.escape(sender)} &middot; '
+            f'{html_lib.escape(date_display)}</div>'
             f'</div>'
             f'</div>',
             unsafe_allow_html=True,
@@ -102,8 +105,9 @@ def _render_message(email_data, attachments=None):
 
         st.markdown(html_content, unsafe_allow_html=True)
     else:
+        body_text = email_data.get("body_text") or "(No text content)"
         st.markdown(
-            f'<div class="reader-body">{email_data["body_text"] or "(No text content)"}</div>',
+            f'<div class="reader-body">{html_lib.escape(body_text)}</div>',
             unsafe_allow_html=True,
         )
 
@@ -126,7 +130,7 @@ def _render_message(email_data, attachments=None):
 
             cards_html.append(
                 f'<a class="attach-card" download="{html_lib.escape(safe_name)}" '
-                f'href="data:{mime};base64,{b64}" title="{safe_filename_html}">'
+                f'href="data:{html_lib.escape(mime)};base64,{b64}" title="{safe_filename_html}">'
                 f'<div class="attach-thumb">'
                 f'<span class="attach-corner" style="border-bottom-color:{color};"></span>'
                 f'<span class="attach-badge" style="background:{color};">{label}</span>'

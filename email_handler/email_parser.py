@@ -67,10 +67,6 @@ def parse_email(raw_bytes: bytes, uid: str = "") -> Dict:
     to_addr = _decode(msg.get("To"))
     date_str = msg.get("Date")
 
-    message_id = (msg.get("Message-ID") or "").strip()
-    in_reply_to = (msg.get("In-Reply-To") or "").strip()
-    references = [r for r in (msg.get("References") or "").split() if r]
-
     try:
         date_obj = parsedate_to_datetime(date_str) if date_str else None
     except (TypeError, ValueError):
@@ -157,7 +153,4 @@ def parse_email(raw_bytes: bytes, uid: str = "") -> Dict:
         "body_html": body_html,
         "snippet": snippet,
         "attachments": attachments,
-        "message_id": message_id,
-        "in_reply_to": in_reply_to,
-        "references": references,
     }
