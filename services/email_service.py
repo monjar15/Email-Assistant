@@ -1,9 +1,11 @@
 # Email service: fetch, parse, cache, search, and one-time full sync.
 from email_handler.email_parser import parse_email
+from services.deletion_detection_service import reconcile_folder
 
 
 def refresh_inbox(client, limit: int, offset: int = 0, refresh: bool = False,
-                   store=None, folder: str = "INBOX", sync_source: str = "page") -> dict:
+                   store=None, folder: str = "INBOX", sync_source: str = "page",
+                   reconcile: bool = False) -> dict:
     # Fetch one inbox page and save it when a store is provided.
     try:
         page = client.fetch_inbox(
@@ -15,12 +17,23 @@ def refresh_inbox(client, limit: int, offset: int = 0, refresh: bool = False,
             "emails": parsed,
             "total": page["total"],
             "has_more": page["has_more"],
+            "missing_uids": [],
+            "remote_uids": [],
         }
         if store is not None and parsed:
             try:
                 store.save_page(folder, parsed, source=sync_source)
             except Exception as store_error:
                 result["store_error"] = str(store_error)
+        if store is not None and reconcile:
+            reconciliation = reconcile_folder(client, store, folder)
+            if not reconciliation.success:
+                raise RuntimeError(
+                    f"Could not reconcile mailbox deletions: "
+                    f"{reconciliation.error}"
+                )
+            result["missing_uids"] = reconciliation.missing_uids
+            result["remote_uids"] = reconciliation.remote_uids
         return result
     except Exception as error:
         return {"success": False, "error": str(error)}
@@ -49,7 +62,8 @@ def get_full_email(client, uid: str, folder: str = "INBOX", store=None) -> dict:
         if not raw:
             return {
                 "success": False,
-                "error": "Message not found (it may have been deleted).",
+                "missing": True,
+                "error": "Message not found (it may have been deleted or moved).",
             }
         parsed = parse_email(raw, uid=uid)
         result = {"success": True, "email": parsed}
@@ -98,6 +112,8 @@ def sync_all_inbox(client, store, folder: str = "INBOX", page_size: int = 100,
                 "error": result["error"],
                 "synced": synced,
                 "total": total,
+                "missing_uids": [],
+                "remote_uids": [],
             }
 
         total = result["total"]
@@ -110,5 +126,23 @@ def sync_all_inbox(client, store, folder: str = "INBOX", page_size: int = 100,
             break
         offset += batch_count
 
+    reconciliation = reconcile_folder(client, store, folder)
+    if not reconciliation.success:
+        store.mark_sync_failed(folder, reconciliation.error, synced)
+        return {
+            "success": False,
+            "error": reconciliation.error,
+            "synced": synced,
+            "total": total,
+            "missing_uids": [],
+            "remote_uids": [],
+        }
+
     store.mark_sync_complete(folder, total, synced)
-    return {"success": True, "synced": synced, "total": total}
+    return {
+        "success": True,
+        "synced": synced,
+        "total": total,
+        "missing_uids": reconciliation.missing_uids,
+        "remote_uids": reconciliation.remote_uids,
+    }

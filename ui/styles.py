@@ -232,6 +232,18 @@ button[title="Expand sidebar"] {{
     line-height: 1.35;
 }}
 
+/* Center only the primary sidebar actions. */
+.st-key-login_button .stButton > button div,
+.st-key-login_button .stButton > button p,
+.st-key-generate_summary_button .stButton > button div,
+.st-key-generate_summary_button .stButton > button p,
+.st-key-logout_button .stButton > button div,
+.st-key-logout_button .stButton > button p {{
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+}}
+
 .stButton > button:hover {{
     border-color: {c['accent']};
     color: {c['accent_strong']};
@@ -279,6 +291,16 @@ section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {{
     background: {c['sidebar_btn_hover']};
     border-color: {c['sidebar_text']};
     color: {c['sidebar_text']};
+}}
+
+/* Highlight the currently selected Inbox or AI Summary filter. */
+section[data-testid="stSidebar"]
+[class*="st-key-sidebar_filter_"] .stButton > button[kind="primary"],
+section[data-testid="stSidebar"]
+[class*="st-key-sidebar_inbox_filter_"] .stButton > button[kind="primary"] {{
+    background: {c['sidebar_btn_hover']} !important;
+    color: #FFFFFF !important;
+    box-shadow: inset 3px 0 0 {c['accent']} !important;
 }}
 
 /* Select / dropdown controls blend with the same surface they sit on. */
@@ -388,7 +410,20 @@ section[data-testid="stSidebar"] .stNumberInput input {{
     font-weight: 500;
     font-size: 0.9rem;
     letter-spacing: 0.4px;
-    padding: 0.6rem 0.1rem;
+    padding: 0.6rem 0.65rem;
+    margin-bottom: -1px;
+    border-radius: 6px 6px 0 0;
+    transition: color 0.16s ease, background-color 0.16s ease;
+}}
+
+.stTabs [data-baseweb="tab"]:hover {{
+    color: {c['accent_strong']} !important;
+    background: {c['accent_soft']};
+}}
+
+.stTabs [data-baseweb="tab"]:focus-visible {{
+    outline: 2px solid {c['accent']};
+    outline-offset: -2px;
 }}
 
 .stTabs [aria-selected="true"] {{
@@ -591,6 +626,31 @@ section[data-testid="stSidebar"] .stCaption {{
     margin-bottom: 0.25rem !important;
 }}
 
+.st-key-inbox_toolbar input::placeholder {{
+    color: #7D8894 !important;
+    opacity: 1 !important;
+    font-size: 1.02rem !important;
+}}
+
+.st-key-inbox_toolbar input {{
+    height: 32px !important;
+    min-height: 32px !important;
+    background: #E1E6EB !important;
+}}
+
+.st-key-inbox_toolbar [data-testid="stTextInput"],
+.st-key-inbox_toolbar [data-testid="stTextInput"] > div {{
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}}
+
+section[data-testid="stSidebar"] input::placeholder {{
+    color: {c['sidebar_text_muted']} !important;
+    opacity: 0.72 !important;
+}}
+
 .inbox-range-label {{
     padding-top: 0.35rem;
     white-space: nowrap;
@@ -638,7 +698,7 @@ section[data-testid="stSidebar"] .stCaption {{
     display: grid !important;
     place-items: center !important;
 
-    background-color: #EEF1F4 !important;
+    background-color: #E1E6EB !important;
     background-image: none !important;
     border: 1px solid #DDE3E8 !important;
     color: #1F2937 !important;
@@ -1023,6 +1083,271 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {{
     padding: 0 !important;
     border: 0 !important;
     box-shadow: none !important;
+}}
+
+/* AI Summary mirrors the two-pane Inbox reader without introducing a new theme. */
+.st-key-summary_workspace,
+.st-key-summary_workspace [data-testid="stHorizontalBlock"] {{
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}}
+
+.st-key-summary_list_scroll,
+.st-key-summary_reader_scroll {{
+    height: calc(100dvh - 9.6rem) !important;
+    max-height: calc(100dvh - 9.6rem) !important;
+    min-height: 300px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}}
+
+[class*="st-key-summary_"] .stButton > button {{
+    min-height: 43px !important;
+    padding: 0.25rem 0.72rem !important;
+    font-size: 0.80rem !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0.35px !important;
+    border-width: 1.2px !important;
+    border-color: #C7CCD1 !important;
+}}
+
+[class*="st-key-summary_"] {{
+    margin-bottom: 0.04rem !important;
+}}
+
+[class*="st-key-summary_"] .stButton {{
+    margin-bottom: 0 !important;
+}}
+
+[class*="st-key-summary_"] .stButton > button:hover {{
+    border-color: #3B6EA5 !important;
+}}
+
+[class*="st-key-summary_"] .stButton > button div,
+[class*="st-key-summary_"] .stButton > button p {{
+    line-height: 1.15 !important;
+    margin: 0 !important;
+}}
+
+[class*="st-key-summary_"] .stButton > button[kind="primary"],
+[class*="st-key-summary_"] .stButton > button[kind="primary"] div,
+[class*="st-key-summary_"] .stButton > button[kind="primary"] p {{
+    color: #FFFFFF !important;
+}}
+
+.summary-overview {{
+    padding: 18px 20px 8px 20px !important;
+    white-space: normal !important;
+}}
+
+.summary-section {{
+    font-family: {FONT_BODY};
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: {c['text_primary']};
+    background: {c['bg_card']};
+    padding: 10px 20px 4px 20px;
+}}
+
+.summary-section ul {{
+    margin: 0.4rem 0 0.6rem 1.1rem;
+    padding: 0;
+}}
+
+/* Stateful tab selector: icon labels retain the polished tab treatment. */
+.st-key-active_workspace [role="radiogroup"] {{
+    gap: 0.55rem !important;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid {c['border']};
+}}
+
+.st-key-active_workspace [role="radiogroup"] label > div:first-child {{
+    display: none !important;
+}}
+
+.st-key-active_workspace label {{
+    border-radius: 6px 6px 0 0;
+    padding: 0.45rem 0.7rem;
+    border-bottom: 2px solid transparent;
+    transition: background-color 0.16s ease, color 0.16s ease;
+}}
+
+.st-key-active_workspace label:hover {{
+    background: {c['accent_soft']};
+}}
+
+.st-key-active_workspace label:has(input:checked) {{
+    color: {c['accent']} !important;
+    border-bottom-color: {c['accent']} !important;
+}}
+
+/* Icon workspace tabs replace radio-style navigation. */
+[class*="st-key-workspace_tab_"] {{
+    margin-bottom: 0 !important;
+}}
+
+[class*="st-key-workspace_tab_"] .stButton > button {{
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    color: {c['text_secondary']} !important;
+    font-weight: 500 !important;
+    padding: 0.45rem 0.18rem !important;
+    transition: color 0.16s ease, border-color 0.16s ease !important;
+}}
+
+[class*="st-key-workspace_tab_"] .stButton > button:hover {{
+    color: {c['accent_strong']} !important;
+    background: transparent !important;
+}}
+
+.st-key-workspace_tab_inbox .stButton > button[kind="primary"],
+.st-key-workspace_tab_summary .stButton > button[kind="primary"] {{
+    color: {c['accent']} !important;
+    border-bottom-color: {c['accent']} !important;
+}}
+
+/* Keep account controls fixed at the lower edge of the sidebar. */
+.st-key-sidebar_footer {{
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 250px !important;
+    z-index: 110 !important;
+    padding: 0.55rem 1rem 0.85rem !important;
+    background: {c['bg_secondary']} !important;
+    border-top: 1px solid {c['sidebar_border']} !important;
+}}
+
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {{
+    padding-bottom: 8.5rem !important;
+}}
+
+/* Summary filters and search live only in the AI Summary workspace. */
+.st-key-summary_workspace input::placeholder {{
+    color: #7D8894 !important;
+    opacity: 1 !important;
+    font-size: 1.02rem !important;
+}}
+
+.st-key-summary_workspace input {{
+    height: 32px !important;
+    min-height: 32px !important;
+}}
+
+.st-key-summary_workspace [data-testid="stTextInput"],
+.st-key-summary_workspace [data-testid="stTextInput"] > div {{
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}}
+
+.summary-filter-count {{
+    font-family: {FONT_BODY};
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: {c['text_secondary']};
+    padding-top: 0.46rem;
+    text-align: center;
+}}
+
+/* Keep the section title clear, while stacking only its filter buttons tightly. */
+section[data-testid="stSidebar"]
+[data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"][class*="st-key-sidebar_filter_"]),
+section[data-testid="stSidebar"]
+[data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"][class*="st-key-sidebar_inbox_filter_"]) {{
+    gap: 0 !important;
+    row-gap: 0 !important;
+}}
+
+section[data-testid="stSidebar"]
+[data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"][class*="st-key-sidebar_filter_"])
+.section-label,
+section[data-testid="stSidebar"]
+[data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"][class*="st-key-sidebar_inbox_filter_"])
+.section-label {{
+    display: block !important;
+    margin: 0 0 0.35rem 0 !important;
+}}
+
+section[data-testid="stSidebar"] [class*="st-key-sidebar_filter_"],
+section[data-testid="stSidebar"] [class*="st-key-sidebar_inbox_filter_"],
+section[data-testid="stSidebar"] [class*="st-key-sidebar_filter_"] [data-testid="stElementContainer"],
+section[data-testid="stSidebar"] [class*="st-key-sidebar_inbox_filter_"] [data-testid="stElementContainer"] {{
+    margin: 0 !important;
+    padding: 0 !important;
+}}
+
+/* Keep the first filter button below its title. */
+section[data-testid="stSidebar"]
+[data-testid="stElementContainer"][class*="st-key-sidebar_filter_all"],
+section[data-testid="stSidebar"]
+[data-testid="stElementContainer"][class*="st-key-sidebar_inbox_filter_all"],
+section[data-testid="stSidebar"]
+[data-testid="stElementContainer"]:has([class*="st-key-sidebar_filter_all"]),
+section[data-testid="stSidebar"]
+[data-testid="stElementContainer"]:has([class*="st-key-sidebar_inbox_filter_all"]) {{
+    margin-top: 1rem !important;
+}}
+
+section[data-testid="stSidebar"] [class*="st-key-sidebar_filter_"] .stButton,
+section[data-testid="stSidebar"] [class*="st-key-sidebar_inbox_filter_"] .stButton {{
+    margin: 0 !important;
+    padding: 0 !important;
+}}
+
+section[data-testid="stSidebar"] [class*="st-key-sidebar_filter_"] .stButton > button,
+section[data-testid="stSidebar"] [class*="st-key-sidebar_inbox_filter_"] .stButton > button {{
+    border: 0 !important;
+    min-height: 30px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}}
+
+section[data-testid="stSidebar"] [class*="st-key-sidebar_filter_"] .stButton > button p,
+section[data-testid="stSidebar"] [class*="st-key-sidebar_inbox_filter_"] .stButton > button p {{
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    white-space: pre !important;
+    text-align: left !important;
+    font-family: Consolas, "Courier New", monospace !important;
+    font-size: 0.90rem !important;
+    font-variant-numeric: tabular-nums;
+}}
+
+/* Previous and next controls use the same sizing, surface, and hover state as search. */
+.st-key-inbox_prev_page .stButton > button,
+.st-key-inbox_next_page .stButton > button {{
+    width: 36px !important;
+    min-width: 36px !important;
+    max-width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    max-height: 36px !important;
+    background-color: #E1E6EB !important;
+    background-image: none !important;
+    border: 1px solid #DDE3E8 !important;
+    color: #1F2937 !important;
+}}
+
+.st-key-inbox_prev_page .stButton > button:hover,
+.st-key-inbox_next_page .stButton > button:hover {{
+    background-color: rgba(59, 110, 165, 0.08) !important;
+    border-color: #3B6EA5 !important;
+    color: #2C5680 !important;
+}}
+
+.st-key-inbox_prev_page,
+.st-key-inbox_next_page {{
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding-top: 0 !important;
+    margin-top: 0 !important;
 }}
 
 </style>

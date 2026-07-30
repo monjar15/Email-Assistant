@@ -8,20 +8,34 @@ import streamlit as st
 from controllers.inbox_controller import (
     check_new_messages,
     handle_inbox_actions,
+    has_checked_emails,
     load_inbox_if_needed,
     render_new_mail_notice,
     run_full_sync_if_needed,
 )
-from controllers.reader_controller import load_selected_message
+from controllers.summary_controller import (
+    monitor_summary_generation,
+    start_summary_generation,
+)
+from services.ai_service import get_ollama_status
 from controllers.session_controller import (
     bind_store_to_signed_in_account,
     initialize_session_state,
     restore_saved_session,
 )
-from ui.inbox import render_inbox
-from ui.reader import render_reader
-from ui.sidebar import render_login_form, render_logout_button, render_status
+from ui.sidebar import (
+    render_login_form,
+    render_inbox_filters,
+    render_logout_button,
+    render_ollama_prompt,
+    render_summary_filters,
+    render_status,
+    render_summary_button,
+)
 from ui.styles import brand_header, get_css
+from ui.tabs.inbox_tab import render_inbox_tab
+from ui.tabs.navigation import INBOX_TAB, SUMMARY_TAB, render_workspace_tabs
+from ui.tabs.summary_tab import render_summary_tab
 
 st.set_page_config(
     page_title="MailMind AI — Email Assistant",
@@ -47,7 +61,8 @@ with st.container(key="app_brand_header"):
 
 info_slot = st.empty()
 login_slot = st.sidebar.empty()
-status_slot = st.sidebar.empty()
+summary_action_slot = st.sidebar.empty()
+summary_filter_slot = st.sidebar.empty()
 activity_slot = st.sidebar.empty()
 
 if not st.session_state.logged_in:
@@ -59,10 +74,6 @@ if not st.session_state.logged_in:
 
 bind_store_to_signed_in_account()
 
-with status_slot.container():
-    render_logout_button()
-    render_status()
-
 # Load the saved inbox and complete the first mailbox sync when needed.
 load_inbox_if_needed(activity_slot, folder=FOLDER)
 run_full_sync_if_needed(activity_slot, folder=FOLDER)
@@ -73,40 +84,60 @@ check_new_messages(
     check_seconds=NEW_MAIL_CHECK_SECONDS,
 )
 render_new_mail_notice()
+email_deletion_notice = st.session_state.pop("email_deletion_notice", "")
+if email_deletion_notice:
+    st.info(email_deletion_notice)
 
-with st.container(height=WORKSPACE_HEIGHT, border=False, key="mail_workspace"):
-    col_list, col_content = st.columns([0.4, 0.6], gap="large")
+# A lightweight Streamlit fragment refreshes the activity bar once per second.
+# The summary worker itself remains independent, so navigation cannot stop it.
+monitor_summary_generation(activity_slot, folder=FOLDER)
 
-    with col_list:
-        list_source = (
-            st.session_state.search_results
-            if st.session_state.search_active
-            else st.session_state.emails
-        )
-        inbox_actions = render_inbox(
-            list_source,
-            total=st.session_state.inbox_total,
-            offset=st.session_state.inbox_offset,
-            loading=st.session_state.loading,
-            checked_uids=st.session_state.checked_uids,
-            search_active=st.session_state.search_active,
-            search_total=st.session_state.search_total,
-            can_prev=st.session_state.inbox_offset > 0,
-            can_next=st.session_state.inbox_has_more,
-        )
-        st.session_state.checked_uids = inbox_actions["checked_uids"]
-
-    with col_content:
-        selected_message = load_selected_message(
-            list_source,
-            activity_slot,
-            folder=FOLDER,
-        )
-        render_reader(selected_message)
-
-# Process search, refresh, and pagination after the interface is rendered.
-handle_inbox_actions(
-    inbox_actions,
-    activity_slot,
-    folder=FOLDER,
+pending_clear = (
+    st.session_state.pop("clear_checked_after_summary", [])
+    + st.session_state.pop("clear_checked_after_refresh", [])
 )
+if pending_clear:
+    st.session_state.checked_uids = set()
+    for uid in pending_clear:
+        st.session_state[f"chk_{uid}"] = False
+
+if st.session_state.pop("switch_to_summary", False):
+    st.session_state.active_workspace = SUMMARY_TAB
+if st.session_state.active_workspace not in {INBOX_TAB, SUMMARY_TAB}:
+    st.session_state.active_workspace = INBOX_TAB
+active_workspace = render_workspace_tabs()
+
+with st.sidebar:
+    with st.container(key="sidebar_footer"):
+        render_status()
+        render_logout_button()
+
+generate_clicked = False
+if active_workspace == INBOX_TAB:
+    ollama_status = get_ollama_status()
+    with summary_action_slot.container():
+        render_ollama_prompt(ollama_status)
+        generate_clicked = render_summary_button(
+            disabled=(
+                not has_checked_emails()
+                or st.session_state.summary_processing
+                or not ollama_status["model_ready"]
+            )
+        )
+    with summary_filter_slot.container():
+        source_for_filter = (
+            st.session_state.search_results
+            if st.session_state.search_active else st.session_state.emails
+        )
+        render_inbox_filters(source_for_filter)
+    inbox_actions, list_source = render_inbox_tab(activity_slot, folder=FOLDER)
+    if generate_clicked:
+        if start_summary_generation(list_source, folder=FOLDER):
+            st.rerun()
+
+    handle_inbox_actions(inbox_actions, activity_slot, folder=FOLDER)
+else:
+    summary_action_slot.empty()
+    with summary_filter_slot.container():
+        render_summary_filters(st.session_state.summaries)
+    render_summary_tab()

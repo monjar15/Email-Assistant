@@ -2,6 +2,7 @@ import streamlit as st
 
 from storage.email_store import EmailStore, normalize_account_email
 from storage.session_store import get_session
+from storage.summary_store import SummaryStore
 
 
 # Add a default only when the session key does not exist.
@@ -21,6 +22,7 @@ def initialize_session_state():
         "inbox_has_more": False,
         "inbox_total": 0,
         "email_bodies": {},
+        "email_validation_cache": {},
         "checked_uids": set(),
         "search_active": False,
         "search_results": [],
@@ -32,6 +34,21 @@ def initialize_session_state():
         "inbox_search_clear": False,
         "last_mail_check": 0.0,
         "new_mail_count": 0,
+        "email_deletion_notice": "",
+        "summaries": [],
+        "selected_summary_uid": None,
+        "summary_processing": False,
+        "summary_future": None,
+        "summary_job_uids": [],
+        "summary_progress": None,
+        "open_summary_tab": False,
+        "active_workspace": "inbox",
+        "summary_filter": "all",
+        "switch_to_summary": False,
+        "clear_checked_after_summary": [],
+        "clear_checked_after_refresh": [],
+        "new_email_uids": set(),
+        "inbox_filter": "all",
     }
     for key, default in defaults.items():
         _init_state(key, default)
@@ -47,6 +64,7 @@ def _reset_mailbox_state_for_account():
         "inbox_has_more": False,
         "inbox_total": 0,
         "email_bodies": {},
+        "email_validation_cache": {},
         "checked_uids": set(),
         "search_active": False,
         "search_results": [],
@@ -56,6 +74,21 @@ def _reset_mailbox_state_for_account():
         "loading": False,
         "last_mail_check": 0.0,
         "new_mail_count": 0,
+        "email_deletion_notice": "",
+        "summaries": [],
+        "selected_summary_uid": None,
+        "summary_processing": False,
+        "summary_future": None,
+        "summary_job_uids": [],
+        "summary_progress": None,
+        "open_summary_tab": False,
+        "active_workspace": "inbox",
+        "summary_filter": "all",
+        "switch_to_summary": False,
+        "clear_checked_after_summary": [],
+        "clear_checked_after_refresh": [],
+        "new_email_uids": set(),
+        "inbox_filter": "all",
     }
     for key, value in defaults.items():
         st.session_state[key] = value
@@ -67,10 +100,13 @@ def bind_store_to_signed_in_account():
         st.session_state.get("email_address", "")
     )
     current_store = st.session_state.get("email_store")
+    current_summary_store = st.session_state.get("summary_store")
 
     if (
         current_store is not None
         and current_store.account_email == account_email
+        and current_summary_store is not None
+        and current_summary_store.account_email == account_email
     ):
         return
 
@@ -79,10 +115,19 @@ def bind_store_to_signed_in_account():
             current_store.close()
         except Exception:
             pass
+    if current_summary_store is not None:
+        try:
+            current_summary_store.close()
+        except Exception:
+            pass
 
     _reset_mailbox_state_for_account()
     st.session_state.email_store = EmailStore(account_email=account_email)
+    st.session_state.summary_store = SummaryStore(account_email=account_email)
     st.session_state.active_store_account = account_email
+    st.session_state.summaries = st.session_state.summary_store.load_all("INBOX")
+    if st.session_state.summaries:
+        st.session_state.selected_summary_uid = st.session_state.summaries[0]["uid"]
 
 
 # Restore the live login after a browser refresh.

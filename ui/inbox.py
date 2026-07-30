@@ -38,7 +38,7 @@ def render_inbox(emails, total: int = 0, offset: int = 0,
             query = st.text_input(
                 "Search",
                 key="inbox_search_query",
-                placeholder="Search mail",
+                placeholder="⌕ Search mail",
                 label_visibility="collapsed",
                 disabled=loading,
                 on_change=_handle_search_input_change,
@@ -85,7 +85,7 @@ def render_inbox(emails, total: int = 0, offset: int = 0,
             )
 
             col_range, col_refresh, col_prev, col_next = st.columns(
-                [0.64, 0.12, 0.12, 0.12], gap="small"
+                [0.64, 0.12, 0.12, 0.12], gap=None
             )
             with col_range:
                 st.markdown(
@@ -97,7 +97,6 @@ def render_inbox(emails, total: int = 0, offset: int = 0,
                 refresh_clicked = st.button(
                     "🔄",
                     key="refresh_inbox_icon",
-                    help="Refresh inbox",
                     use_container_width=True,
                     disabled=loading,
                 )
@@ -105,7 +104,6 @@ def render_inbox(emails, total: int = 0, offset: int = 0,
                 prev_clicked = st.button(
                     "‹",
                     key="inbox_prev_page",
-                    help="Previous page",
                     use_container_width=True,
                     disabled=(loading or not prev_allowed),
                 )
@@ -113,7 +111,6 @@ def render_inbox(emails, total: int = 0, offset: int = 0,
                 next_clicked = st.button(
                     "›",
                     key="inbox_next_page",
-                    help="Next page",
                     use_container_width=True,
                     disabled=(loading or not next_allowed),
                 )
@@ -139,11 +136,14 @@ def render_inbox(emails, total: int = 0, offset: int = 0,
         )
         return actions
 
-    new_checked = set()
+    visible_uids = {str(email_item.get("uid", "")) for email_item in emails}
+    # Preserve choices from other inbox pages while the current page changes.
+    new_checked = set(checked_uids) - visible_uids
     with st.container(height=LIST_HEIGHT, border=False, key="inbox_list_scroll"):
         for email_item in emails:
             uid = str(email_item.get("uid", ""))
             is_selected = st.session_state.get("selected_uid") == uid
+            is_new = uid in st.session_state.get("new_email_uids", set())
 
             col_check, col_row = st.columns([0.045, 0.955], gap="small")
             with col_check:
@@ -160,6 +160,9 @@ def render_inbox(emails, total: int = 0, offset: int = 0,
             with col_row:
                 subject = email_item.get("subject") or "(No Subject)"
                 from_label = email_item.get("from", "")
+                if is_new:
+                    subject = f"**{subject}**"
+                    from_label = f"**{from_label}**"
                 clicked = st.button(
                     f"{subject}  \n{from_label}",
                     key=f"email_{uid}",
@@ -169,6 +172,7 @@ def render_inbox(emails, total: int = 0, offset: int = 0,
                 )
                 if clicked:
                     st.session_state.selected_uid = uid
+                    st.session_state.new_email_uids.discard(uid)
                     st.rerun()
 
         # Keep the final card above the scroll container edge.

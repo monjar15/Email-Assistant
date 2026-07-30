@@ -20,3 +20,9 @@ KNOWN_PROVIDERS = {
 
 # App settings.
 MAX_EMAILS_FETCH = 50
+
+# Local LLM settings. Install Ollama and pull the model with:
+# ollama pull qwen3:1.7b
+OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
+OLLAMA_TAGS_URL = "http://127.0.0.1:11434/api/tags"
+OLLAMA_MODEL = "qwen3:1.7b"

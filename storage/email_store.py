@@ -4,7 +4,7 @@ import shutil
 import sqlite3
 import unicodedata
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "emails.db")
 
@@ -116,6 +116,7 @@ class EmailStore:
         self.conn.create_function(
             "SEARCH_MATCH_EMAIL", 6, _search_matches_email, deterministic=True
         )
+        self.cache_identifier_migrated = False
         self._init_db()
         self.account_id = self._get_or_create_account_id()
 
@@ -185,6 +186,8 @@ class EmailStore:
                 body_text TEXT,
                 body_html TEXT,
                 is_full INTEGER DEFAULT 0,
+                remote_available INTEGER NOT NULL DEFAULT 1,
+                remote_unavailable_at TEXT,
                 synced_at TEXT DEFAULT (datetime('now')),
                 PRIMARY KEY (account_id, folder, uid),
                 FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
@@ -216,6 +219,11 @@ class EmailStore:
             CREATE INDEX IF NOT EXISTS idx_attachments_account_email
                 ON attachments(account_id, folder, uid);
 
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS sync_state (
                 account_id INTEGER NOT NULL,
                 folder TEXT NOT NULL,
@@ -228,6 +236,39 @@ class EmailStore:
                 FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
             );
         """)
+
+        existing_columns = {
+            row[1] for row in self.conn.execute("PRAGMA table_info(emails)").fetchall()
+        }
+        if "remote_available" not in existing_columns:
+            self.conn.execute(
+                "ALTER TABLE emails ADD COLUMN remote_available INTEGER NOT NULL DEFAULT 1"
+            )
+        if "remote_unavailable_at" not in existing_columns:
+            self.conn.execute(
+                "ALTER TABLE emails ADD COLUMN remote_unavailable_at TEXT"
+            )
+
+        identifier_mode_row = self.conn.execute(
+            "SELECT value FROM app_meta WHERE key='email_identifier_mode'"
+        ).fetchone()
+        identifier_mode = identifier_mode_row[0] if identifier_mode_row else None
+        if identifier_mode != "imap_uid_v1":
+            legacy_count = self.conn.execute("SELECT COUNT(*) FROM emails").fetchone()[0]
+            if legacy_count:
+                # Older versions stored mutable IMAP sequence numbers. Rebuild
+                # only the email cache so a deletion cannot point at another email.
+                self.conn.execute("DELETE FROM attachments")
+                self.conn.execute("DELETE FROM emails")
+                self.conn.execute("DELETE FROM sync_state")
+                self.cache_identifier_migrated = True
+            self.conn.execute(
+                """
+                INSERT INTO app_meta (key, value)
+                VALUES ('email_identifier_mode', 'imap_uid_v1')
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                """
+            )
         self.conn.commit()
 
     # Load or create the current account record.
@@ -264,7 +305,10 @@ class EmailStore:
     # Return the saved email count for this account.
     def get_count(self, folder: str = "INBOX") -> int:
         return self.conn.execute(
-            "SELECT COUNT(*) FROM emails WHERE account_id=? AND folder=?",
+            """
+            SELECT COUNT(*) FROM emails
+            WHERE account_id=? AND folder=? AND remote_available=1
+            """,
             (self.account_id, folder),
         ).fetchone()[0]
 
@@ -293,9 +337,10 @@ class EmailStore:
         self.conn.executemany("""
             INSERT INTO emails (
                 account_id, folder, uid, subject, sender, recipient, date,
-                date_display, snippet, synced_at
+                date_display, snippet, remote_available,
+                remote_unavailable_at, synced_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, datetime('now'))
             ON CONFLICT(account_id, folder, uid) DO UPDATE SET
                 subject=excluded.subject,
                 sender=excluded.sender,
@@ -306,6 +351,8 @@ class EmailStore:
                     WHEN excluded.snippet <> '' THEN excluded.snippet
                     ELSE emails.snippet
                 END,
+                remote_available=1,
+                remote_unavailable_at=NULL,
                 synced_at=excluded.synced_at
             WHERE
                 emails.subject IS NOT excluded.subject OR
@@ -313,6 +360,7 @@ class EmailStore:
                 emails.recipient IS NOT excluded.recipient OR
                 emails.date IS NOT excluded.date OR
                 emails.date_display IS NOT excluded.date_display OR
+                emails.remote_available <> 1 OR
                 (excluded.snippet <> '' AND emails.snippet IS NOT excluded.snippet)
         """, rows)
         self.conn.commit()
@@ -326,9 +374,10 @@ class EmailStore:
         self.conn.execute("""
             INSERT INTO emails (
                 account_id, folder, uid, subject, sender, recipient, date,
-                date_display, snippet, body_text, body_html, is_full, synced_at
+                date_display, snippet, body_text, body_html, is_full,
+                remote_available, remote_unavailable_at, synced_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, NULL, datetime('now'))
             ON CONFLICT(account_id, folder, uid) DO UPDATE SET
                 subject=excluded.subject,
                 sender=excluded.sender,
@@ -339,6 +388,8 @@ class EmailStore:
                 body_text=excluded.body_text,
                 body_html=excluded.body_html,
                 is_full=1,
+                remote_available=1,
+                remote_unavailable_at=NULL,
                 synced_at=excluded.synced_at
         """, (
             self.account_id,
@@ -455,7 +506,7 @@ class EmailStore:
                 uid, subject, sender, recipient, date, date_display, snippet,
                 is_full
             FROM emails
-            WHERE account_id=? AND folder=?
+            WHERE account_id=? AND folder=? AND remote_available=1
             ORDER BY date DESC, CAST(uid AS INTEGER) DESC
             LIMIT ? OFFSET ?
         """, (self.account_id, folder, limit, offset)).fetchall()
@@ -490,7 +541,7 @@ class EmailStore:
         if not filters and not _query_units(general_query):
             return {"emails": [], "total": 0}
 
-        conditions = ["account_id=?", "folder=?"]
+        conditions = ["account_id=?", "folder=?", "remote_available=1"]
         params: List[object] = [self.account_id, folder]
 
         field_map = {
@@ -538,15 +589,111 @@ class EmailStore:
         }
 
     # Load one saved email by folder and UID.
-    def get_email(self, folder: str, uid: str) -> Optional[Dict]:
+    def get_email(
+        self, folder: str, uid: str, include_unavailable: bool = False
+    ) -> Optional[Dict]:
+        availability_sql = "" if include_unavailable else " AND remote_available=1"
         row = self.conn.execute(
-            """
+            f"""
             SELECT * FROM emails
-            WHERE account_id=? AND folder=? AND uid=?
+            WHERE account_id=? AND folder=? AND uid=?{availability_sql}
             """,
             (self.account_id, folder, str(uid)),
         ).fetchone()
         return self._row_to_email(row) if row else None
+
+    def get_active_uids(self, folder: str = "INBOX") -> Set[str]:
+        """Return locally visible stable UIDs for one folder."""
+        rows = self.conn.execute(
+            """
+            SELECT uid FROM emails
+            WHERE account_id=? AND folder=? AND remote_available=1
+            """,
+            (self.account_id, folder),
+        ).fetchall()
+        return {str(row["uid"]) for row in rows}
+
+    def mark_remote_unavailable(
+        self, folder: str, uids: Iterable[str]
+    ) -> List[str]:
+        """Hide cached emails confirmed absent from the remote folder."""
+        normalized = sorted({str(uid) for uid in uids if str(uid)})
+        if not normalized:
+            return []
+
+        changed: List[str] = []
+        for start in range(0, len(normalized), 400):
+            batch = normalized[start:start + 400]
+            placeholders = ",".join("?" for _ in batch)
+            rows = self.conn.execute(
+                f"""
+                SELECT uid FROM emails
+                WHERE account_id=? AND folder=? AND remote_available=1
+                  AND uid IN ({placeholders})
+                """,
+                [self.account_id, folder, *batch],
+            ).fetchall()
+            changed.extend(str(row["uid"]) for row in rows)
+            self.conn.execute(
+                f"""
+                UPDATE emails
+                SET remote_available=0,
+                    remote_unavailable_at=datetime('now')
+                WHERE account_id=? AND folder=? AND uid IN ({placeholders})
+                """,
+                [self.account_id, folder, *batch],
+            )
+        self.conn.commit()
+        return changed
+
+    def mark_remote_available(self, folder: str, uids: Iterable[str]) -> int:
+        """Restore cached emails whose stable UIDs reappear remotely."""
+        normalized = sorted({str(uid) for uid in uids if str(uid)})
+        if not normalized:
+            return 0
+
+        changed = 0
+        for start in range(0, len(normalized), 400):
+            batch = normalized[start:start + 400]
+            placeholders = ",".join("?" for _ in batch)
+            cursor = self.conn.execute(
+                f"""
+                UPDATE emails
+                SET remote_available=1,
+                    remote_unavailable_at=NULL
+                WHERE account_id=? AND folder=?
+                  AND remote_available=0
+                  AND uid IN ({placeholders})
+                """,
+                [self.account_id, folder, *batch],
+            )
+            changed += cursor.rowcount
+        self.conn.commit()
+        return changed
+
+    def reconcile_remote_uids(
+        self, folder: str, remote_uids: Iterable[str]
+    ) -> List[str]:
+        """Persist availability by comparing cached and remote stable UIDs."""
+        remote = {str(uid) for uid in remote_uids if str(uid)}
+        rows = self.conn.execute(
+            """
+            SELECT uid, remote_available FROM emails
+            WHERE account_id=? AND folder=?
+            """,
+            (self.account_id, folder),
+        ).fetchall()
+        active = {
+            str(row["uid"])
+            for row in rows
+            if int(row["remote_available"] or 0) == 1
+        }
+        inactive = {str(row["uid"]) for row in rows}.difference(active)
+        changed_missing = self.mark_remote_unavailable(
+            folder, active.difference(remote)
+        )
+        self.mark_remote_available(folder, inactive.intersection(remote))
+        return changed_missing
 
     # Load saved attachments for one email.
     def get_attachments(self, folder: str, uid: str) -> List[Dict]:

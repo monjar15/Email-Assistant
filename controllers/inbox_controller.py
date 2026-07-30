@@ -3,6 +3,7 @@ import time
 import streamlit as st
 
 from config import MAX_EMAILS_FETCH
+from controllers.deletion_controller import apply_confirmed_deletions
 from services.email_service import (
     load_cached_inbox,
     refresh_inbox,
@@ -34,6 +35,17 @@ def finish_sidebar_activity(progress, text: str):
 # Remove the sidebar activity area.
 def clear_sidebar_activity(activity_slot):
     activity_slot.empty()
+
+
+def has_checked_emails() -> bool:
+    """Keep bulk selection available while the user opens another email."""
+    if st.session_state.checked_uids:
+        return True
+    return any(
+        bool(value)
+        for key, value in st.session_state.items()
+        if key.startswith("chk_")
+    )
 
 
 # Apply one saved database page to the current inbox state.
@@ -157,6 +169,7 @@ def run_full_sync_if_needed(activity_slot, folder: str = "INBOX"):
         progress_callback=_update_sync_progress,
     )
     if sync_result["success"]:
+        apply_confirmed_deletions(sync_result.get("missing_uids", []))
         finish_sidebar_activity(sync_progress, "First-time sync complete")
         st.session_state.full_synced = True
         load_local_page(0, folder)
@@ -181,7 +194,11 @@ def check_new_messages(folder: str = "INBOX", check_seconds: int = 30):
         and (time.time() - st.session_state.last_mail_check) > check_seconds
     ):
         st.session_state.last_mail_check = time.time()
-        current_count = st.session_state.imap_client.get_message_count(folder)
+        try:
+            current_count = st.session_state.imap_client.get_message_count(folder)
+        except Exception as error:
+            print(f"[app] New-mail check skipped: {error}", flush=True)
+            return
         local_count = st.session_state.email_store.get_count(folder)
         if current_count is not None:
             st.session_state.email_store.update_remote_total(folder, current_count)
@@ -229,6 +246,7 @@ def handle_inbox_actions(inbox_actions, activity_slot, folder: str = "INBOX"):
 
     if inbox_actions["refresh"] and not st.session_state.loading:
         st.session_state.loading = True
+        new_message_count = st.session_state.new_mail_count
         refresh_progress = start_sidebar_activity(
             activity_slot, "Checking for new emails...", 0.08
         )
@@ -244,9 +262,11 @@ def handle_inbox_actions(inbox_actions, activity_slot, folder: str = "INBOX"):
             store=st.session_state.email_store,
             folder=folder,
             sync_source="manual_refresh",
+            reconcile=True,
         )
 
         if result["success"]:
+            apply_confirmed_deletions(result.get("missing_uids", []))
             update_sidebar_activity(
                 refresh_progress, 0.84, "Reloading the inbox..."
             )
@@ -256,6 +276,14 @@ def handle_inbox_actions(inbox_actions, activity_slot, folder: str = "INBOX"):
             st.session_state.search_results = []
             st.session_state.search_total = 0
             st.session_state.selected_uid = None
+            st.session_state.clear_checked_after_refresh = list(
+                st.session_state.checked_uids
+            )
+            new_uids = {
+                str(item.get("uid"))
+                for item in result.get("emails", [])[:new_message_count]
+            }
+            st.session_state.new_email_uids.update(new_uids)
             st.session_state.new_mail_count = 0
             finish_sidebar_activity(refresh_progress, "Inbox refreshed")
         else:
@@ -270,7 +298,6 @@ def handle_inbox_actions(inbox_actions, activity_slot, folder: str = "INBOX"):
         )
         next_offset = st.session_state.inbox_offset + MAX_EMAILS_FETCH
         if load_local_page(next_offset, folder):
-            st.session_state.selected_uid = None
             finish_sidebar_activity(page_progress, "Next page ready")
         clear_sidebar_activity(activity_slot)
         st.rerun()
@@ -281,7 +308,6 @@ def handle_inbox_actions(inbox_actions, activity_slot, folder: str = "INBOX"):
         )
         previous_offset = max(0, st.session_state.inbox_offset - MAX_EMAILS_FETCH)
         if load_local_page(previous_offset, folder):
-            st.session_state.selected_uid = None
             finish_sidebar_activity(page_progress, "Previous page ready")
         clear_sidebar_activity(activity_slot)
         st.rerun()
