@@ -44,15 +44,51 @@ def _normalize_priority(value) -> str:
     return priority.title() if priority in {"high", "medium", "low"} else "Medium"
 
 
+def _normalize_status(value) -> str:
+    status = str(value or "pending").strip().casefold().replace("_", " ")
+    aliases = {
+        "complete": "Complete",
+        "completed": "Complete",
+        "done": "Complete",
+        "in progress": "In Progress",
+        "in-progress": "In Progress",
+        "ongoing": "In Progress",
+        "pending": "Pending",
+        "not started": "Pending",
+        "to do": "Pending",
+        "todo": "Pending",
+    }
+    return aliases.get(status, "Pending")
+
+
 def summarize_email(email: dict) -> dict:
     """Ask the local Qwen3 model for a strictly structured email summary."""
     prompt = """Summarize the email below for a busy professional. Return JSON only,
 using exactly these keys: summary (string), priority (High, Medium, or Low),
-key_points (array of strings), deadlines (array of strings), action_items
-(array of strings).
+status (Complete, In Progress, or Pending), key_points (array of strings),
+deadlines (array of strings), action_items (array of strings).
 
 Rules:
-- Do not invent facts, dates, or actions.
+- Do not invent facts, dates, actions, or progress.
+- Determine priority using these rules:
+  * High: an explicit urgent/critical/escalated request, a deadline within 24 hours,
+    a blocking issue, or a serious consequence if action is delayed.
+  * Medium: a clear request that needs attention, a deadline later than 24 hours
+    but within 7 days, or routine work with a stated due date.
+  * Low: informational or optional mail, no action is requested, or an action has
+    no stated urgency or near-term consequence.
+  If signals conflict, select the highest applicable priority. Do not treat words
+  in signatures, disclaimers, or quoted history as priority signals.
+- Use Complete only when the email explicitly says the work is finished or completed.
+- Use In Progress only when the email explicitly says the work has started or is ongoing.
+- Use Pending for a new request, work not yet started, or when progress is unclear.
+- Detect deadlines written as natural-language text as well as numeric dates. This
+  includes phrases such as "today", "tomorrow", "this Friday", "next week",
+  "end of day", "end of month", and "within three days". Preserve each deadline's
+  original wording; when it can be resolved from the email Date, append the resolved
+  date in YYYY-MM-DD form, for example "this Friday (2026-08-07)".
+- Only include text that actually expresses when something is due; do not mistake
+  the sent date, meeting history, or dates in signatures/quoted history for deadlines.
 - Use an empty array when there are no deadlines or action items.
 - Keep the summary concise and useful.
 
@@ -95,6 +131,7 @@ Rules:
     return {
         "summary": overview or "No summary was generated.",
         "priority": _normalize_priority(summary.get("priority")),
+        "status": _normalize_status(summary.get("status")),
         "key_points": _normalize_list(summary.get("key_points")),
         "deadlines": _normalize_list(summary.get("deadlines")),
         "action_items": _normalize_list(summary.get("action_items")),

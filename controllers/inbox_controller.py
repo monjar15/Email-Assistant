@@ -10,11 +10,13 @@ from services.email_service import (
     search_inbox,
     sync_all_inbox,
 )
-from ui.styles import section_label
+from ui.markup import section_label
 
 
 # Show the shared activity bar in the sidebar.
 def start_sidebar_activity(activity_slot, text: str, value: float = 0.05):
+    if activity_slot is None:
+        return None
     activity_slot.empty()
     with activity_slot.container():
         st.markdown(section_label("Activity"), unsafe_allow_html=True)
@@ -34,18 +36,33 @@ def finish_sidebar_activity(progress, text: str):
 
 # Remove the sidebar activity area.
 def clear_sidebar_activity(activity_slot):
-    activity_slot.empty()
+    if activity_slot is not None:
+        activity_slot.empty()
+
+
+def sync_checked_uids_from_widgets() -> set[str]:
+    """Synchronize the saved selection with the latest checkbox widget states."""
+    selected_uids = {
+        str(uid) for uid in st.session_state.get("checked_uids", set())
+    }
+
+    for key, value in list(st.session_state.items()):
+        if not key.startswith("chk_"):
+            continue
+
+        uid = key.removeprefix("chk_")
+        if bool(value):
+            selected_uids.add(uid)
+        else:
+            selected_uids.discard(uid)
+
+    st.session_state.checked_uids = selected_uids
+    return selected_uids
 
 
 def has_checked_emails() -> bool:
-    """Keep bulk selection available while the user opens another email."""
-    if st.session_state.checked_uids:
-        return True
-    return any(
-        bool(value)
-        for key, value in st.session_state.items()
-        if key.startswith("chk_")
-    )
+    """Return whether at least one email is currently checked."""
+    return bool(sync_checked_uids_from_widgets())
 
 
 # Apply one saved database page to the current inbox state.

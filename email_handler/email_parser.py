@@ -38,14 +38,10 @@ def _sanitize_html(html: str) -> str:
     html = re.sub(r"\son\w+\s*=\s*'[^']*'", "", html, flags=re.IGNORECASE)
     html = re.sub(r'(href|src)\s*=\s*"javascript:[^"]*"', r'\1="#"', html, flags=re.IGNORECASE)
     html = re.sub(r"(href|src)\s*=\s*'javascript:[^']*'", r"\1='#'", html, flags=re.IGNORECASE)
-
-    html = re.sub(
-        r"<img ",
-        '<img onerror="this.style.display=\'none\'" referrerpolicy="no-referrer" '
-        'style="max-width:100%;height:auto;" ',
-        html,
-        flags=re.IGNORECASE,
-    )
+    # Preserve the original email layout as much as possible.
+    # Avoid forcing proxy-like image behavior here because it can break
+    # provider-hosted assets and make previews look different from
+    # Gmail / Outlook.
     return html
 
 

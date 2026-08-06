@@ -23,26 +23,28 @@ from controllers.session_controller import (
     initialize_session_state,
     restore_saved_session,
 )
+from ui.login import render_loading_page, render_login_page
 from ui.sidebar import (
-    render_login_form,
-    render_inbox_filters,
     render_logout_button,
     render_ollama_prompt,
-    render_summary_filters,
     render_status,
     render_summary_button,
+    render_summary_overview,
 )
-from ui.styles import brand_header, get_css
+from ui.markup import sidebar_brand
+from ui.styles import load_styles
 from ui.tabs.inbox_tab import render_inbox_tab
-from ui.tabs.navigation import INBOX_TAB, SUMMARY_TAB, render_workspace_tabs
+from ui.tabs.navigation import INBOX_TAB, SUMMARY_TAB, TODO_TAB, render_sidebar_navigation
 from ui.tabs.summary_tab import render_summary_tab
+from ui.tabs.todo_tab import render_todo_tab
 
 st.set_page_config(
     page_title="MailMind AI — Email Assistant",
     page_icon="✒",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
-st.markdown(get_css(), unsafe_allow_html=True)
+load_styles()
 
 initialize_session_state()
 
@@ -53,24 +55,59 @@ FOLDER = "INBOX"
 # Restore a live server-side login after a browser refresh.
 restore_saved_session()
 
-with st.container(key="app_brand_header"):
-    st.markdown(
-        brand_header("MailMind AI", "AI-Assisted Inbox &amp; Task Management"),
-        unsafe_allow_html=True,
-    )
 
-info_slot = st.empty()
-login_slot = st.sidebar.empty()
-summary_action_slot = st.sidebar.empty()
-summary_filter_slot = st.sidebar.empty()
-activity_slot = st.sidebar.empty()
+def render_app_sidebar():
+    """Render a stable sidebar in every application state."""
+    summary_action_slot = None
+    summary_filter_slot = None
+    activity_slot = None
+
+    with st.sidebar:
+        with st.container(key="sidebar_shell"):
+            with st.container(key="sidebar_header"):
+                st.markdown(
+                    sidebar_brand("MailMind AI", "AI-Assisted Inbox &amp; Task Management"),
+                    unsafe_allow_html=True,
+                )
+            with st.container(key="sidebar_body"):
+                if st.session_state.logged_in:
+                    render_sidebar_navigation()
+                    summary_action_slot = st.empty()
+                    summary_filter_slot = st.empty()
+                    activity_slot = st.empty()
+                else:
+                    st.markdown(
+                        '<div class="sidebar-signed-out-note">Sign in to open your inbox and tools.</div>',
+                        unsafe_allow_html=True,
+                    )
+            if st.session_state.logged_in:
+                with st.container(key="sidebar_footer"):
+                    render_status()
+                    render_logout_button()
+
+    return summary_action_slot, summary_filter_slot, activity_slot
+
 
 if not st.session_state.logged_in:
-    with info_slot.container():
-        st.info("Log in with your email account from the sidebar to get started.")
-    with login_slot.container():
-        render_login_form()
+    render_login_page()
     st.stop()
+
+# The application sidebar belongs to the signed-in workspace only. Rendering it
+# after the login guard keeps the sign-in page full-width and distraction-free.
+summary_action_slot, summary_filter_slot, activity_slot = render_app_sidebar()
+
+if st.session_state.get("post_login_loading"):
+    render_loading_page(
+        title="Loading your inbox",
+        subtitle="Please wait while your mailbox is being prepared.",
+    )
+    # Keep the full-page inbox loader visible until the inbox is ready.
+    # Do not render the separate "Checking mailbox status" activity bar.
+    bind_store_to_signed_in_account()
+    load_inbox_if_needed(None, folder=FOLDER)
+    run_full_sync_if_needed(None, folder=FOLDER)
+    st.session_state.post_login_loading = False
+    st.rerun()
 
 bind_store_to_signed_in_account()
 
@@ -103,14 +140,9 @@ if pending_clear:
 
 if st.session_state.pop("switch_to_summary", False):
     st.session_state.active_workspace = SUMMARY_TAB
-if st.session_state.active_workspace not in {INBOX_TAB, SUMMARY_TAB}:
+if st.session_state.active_workspace not in {INBOX_TAB, SUMMARY_TAB, TODO_TAB}:
     st.session_state.active_workspace = INBOX_TAB
-active_workspace = render_workspace_tabs()
-
-with st.sidebar:
-    with st.container(key="sidebar_footer"):
-        render_status()
-        render_logout_button()
+active_workspace = st.session_state.active_workspace
 
 generate_clicked = False
 if active_workspace == INBOX_TAB:
@@ -124,20 +156,19 @@ if active_workspace == INBOX_TAB:
                 or not ollama_status["model_ready"]
             )
         )
-    with summary_filter_slot.container():
-        source_for_filter = (
-            st.session_state.search_results
-            if st.session_state.search_active else st.session_state.emails
-        )
-        render_inbox_filters(source_for_filter)
+    summary_filter_slot.empty()
     inbox_actions, list_source = render_inbox_tab(activity_slot, folder=FOLDER)
     if generate_clicked:
         if start_summary_generation(list_source, folder=FOLDER):
             st.rerun()
 
     handle_inbox_actions(inbox_actions, activity_slot, folder=FOLDER)
-else:
+elif active_workspace == SUMMARY_TAB:
     summary_action_slot.empty()
     with summary_filter_slot.container():
-        render_summary_filters(st.session_state.summaries)
+        render_summary_overview(st.session_state.summaries)
     render_summary_tab()
+else:
+    summary_action_slot.empty()
+    summary_filter_slot.empty()
+    render_todo_tab()

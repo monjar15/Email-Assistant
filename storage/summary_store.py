@@ -35,6 +35,7 @@ class SummaryStore:
                 deadlines TEXT NOT NULL,
                 action_items TEXT NOT NULL,
                 priority TEXT NOT NULL DEFAULT 'Medium',
+                status TEXT NOT NULL DEFAULT 'Pending',
                 is_read INTEGER NOT NULL DEFAULT 0,
                 generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (account_email, folder, uid)
@@ -46,6 +47,10 @@ class SummaryStore:
         if "priority" not in columns:
             self.conn.execute(
                 "ALTER TABLE summaries ADD COLUMN priority TEXT NOT NULL DEFAULT 'Medium'"
+            )
+        if "status" not in columns:
+            self.conn.execute(
+                "ALTER TABLE summaries ADD COLUMN status TEXT NOT NULL DEFAULT 'Pending'"
             )
         if "is_read" not in columns:
             self.conn.execute(
@@ -60,8 +65,8 @@ class SummaryStore:
                 INSERT INTO summaries (
                     account_email, folder, uid, sender, recipient, subject,
                     date_value, date_display, snippet, summary, key_points,
-                    deadlines, action_items, priority
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    deadlines, action_items, priority, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 (
                     self.account_email, folder, str(item.get("uid", "")),
@@ -72,6 +77,7 @@ class SummaryStore:
                     json.dumps(item.get("deadlines", [])),
                     json.dumps(item.get("action_items", [])),
                     item.get("priority", "Medium"),
+                    item.get("status", "Pending"),
                 ) for item in summaries
             ])
 
@@ -82,6 +88,22 @@ class SummaryStore:
             (self.account_email, folder),
         ).fetchall()
         return {str(row["uid"]) for row in rows}
+
+    def update_status(self, folder: str, uid: str, status: str):
+        """Persist a task summary status for future To-Do integration."""
+        normalized = str(status or "Pending").strip().casefold()
+        allowed = {
+            "complete": "Complete",
+            "completed": "Complete",
+            "in progress": "In Progress",
+            "pending": "Pending",
+        }
+        value = allowed.get(normalized, "Pending")
+        with self.conn:
+            self.conn.execute(
+                "UPDATE summaries SET status=? WHERE account_email=? AND folder=? AND uid=?",
+                (value, self.account_email, folder, str(uid)),
+            )
 
     def mark_read(self, folder: str, uid: str):
         """Mark one opened summary as read."""
@@ -96,7 +118,7 @@ class SummaryStore:
         rows = self.conn.execute("""
             SELECT uid, sender, recipient, subject, date_value, date_display,
                    snippet, summary, key_points, deadlines, action_items,
-                   priority, is_read
+                   priority, status, is_read
             FROM summaries
             WHERE account_email=? AND folder=?
             ORDER BY generated_at DESC, rowid DESC
@@ -106,7 +128,8 @@ class SummaryStore:
             "subject": row["subject"], "date": row["date_value"],
             "date_display": row["date_display"], "snippet": row["snippet"],
             "summary": row["summary"],
-            "priority": row["priority"], "is_read": bool(row["is_read"]),
+            "priority": row["priority"], "status": row["status"],
+            "is_read": bool(row["is_read"]),
             "key_points": json.loads(row["key_points"]),
             "deadlines": json.loads(row["deadlines"]),
             "action_items": json.loads(row["action_items"]),

@@ -15,11 +15,19 @@ RECONNECTABLE_IMAP_ERRORS = (
 # Handle IMAP connections and message fetching.
 class IMAPClient:
     # Store connection settings and initialize caches.
-    def __init__(self, server: str, port: int, email_address: str, password: str):
+    def __init__(
+        self,
+        server: str,
+        port: int,
+        email_address: str,
+        password: Optional[str] = None,
+        oauth_token_provider=None,
+    ):
         self.server = server
         self.port = port
         self.email_address = email_address
         self.password = password
+        self.oauth_token_provider = oauth_token_provider
         self.conn: Optional[imaplib.IMAP4_SSL] = None
 
         self._known_total: Optional[int] = None
@@ -32,7 +40,15 @@ class IMAPClient:
         new_conn = None
         try:
             new_conn = imaplib.IMAP4_SSL(self.server, self.port)
-            new_conn.login(self.email_address, self.password)
+            if self.oauth_token_provider is not None:
+                access_token = self.oauth_token_provider.get_access_token()
+                oauth_payload = (
+                    f"user={self.email_address}\x01"
+                    f"auth=Bearer {access_token}\x01\x01"
+                ).encode("utf-8")
+                new_conn.authenticate("XOAUTH2", lambda _challenge: oauth_payload)
+            else:
+                new_conn.login(self.email_address, self.password or "")
             self.conn = new_conn
             return True
         except imaplib.IMAP4.error as error:

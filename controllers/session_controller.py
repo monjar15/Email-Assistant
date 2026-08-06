@@ -44,11 +44,34 @@ def initialize_session_state():
         "open_summary_tab": False,
         "active_workspace": "inbox",
         "summary_filter": "all",
+        "summary_arrange_by": None,
+        "summary_sort_order": None,
+        "summary_filter_popover_version": 0,
+        "summary_offset": 0,
+        "summary_page_size": 50,
         "switch_to_summary": False,
         "clear_checked_after_summary": [],
         "clear_checked_after_refresh": [],
         "new_email_uids": set(),
         "inbox_filter": "all",
+        "inbox_arrange_by": None,
+        "inbox_sort_order": None,
+        "inbox_filter_popover_version": 0,
+        "login_authenticating": False,
+        "login_error": "",
+        "login_email_error": "",
+        "post_login_loading": False,
+        "login_submit_requested": False,
+        "login_manual_mode": False,
+        "suppress_login_autofill": True,
+        "pending_login_email": "",
+        "pending_login_password": "",
+        "pending_login_server": "",
+        "pending_login_port": 993,
+        "microsoft_login_active": False,
+        "microsoft_login_error": "",
+        "microsoft_login_redirect_url": "",
+        "profile_image_url": "",
     }
     for key, default in defaults.items():
         _init_state(key, default)
@@ -84,11 +107,34 @@ def _reset_mailbox_state_for_account():
         "open_summary_tab": False,
         "active_workspace": "inbox",
         "summary_filter": "all",
+        "summary_arrange_by": None,
+        "summary_sort_order": None,
+        "summary_filter_popover_version": 0,
+        "summary_offset": 0,
+        "summary_page_size": 50,
         "switch_to_summary": False,
         "clear_checked_after_summary": [],
         "clear_checked_after_refresh": [],
         "new_email_uids": set(),
         "inbox_filter": "all",
+        "inbox_arrange_by": None,
+        "inbox_sort_order": None,
+        "inbox_filter_popover_version": 0,
+        "login_authenticating": False,
+        "login_error": "",
+        "login_email_error": "",
+        "post_login_loading": False,
+        "login_submit_requested": False,
+        "login_manual_mode": False,
+        "suppress_login_autofill": True,
+        "pending_login_email": "",
+        "pending_login_password": "",
+        "pending_login_server": "",
+        "pending_login_port": 993,
+        "microsoft_login_active": False,
+        "microsoft_login_error": "",
+        "microsoft_login_redirect_url": "",
+        "profile_image_url": "",
     }
     for key, value in defaults.items():
         st.session_state[key] = value
@@ -140,5 +186,6 @@ def restore_saved_session():
             st.session_state.logged_in = True
             st.session_state.email_address = saved["email_address"]
             st.session_state.session_token = token
+            st.session_state.post_login_loading = True
         elif token:
             st.query_params.clear()

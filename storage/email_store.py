@@ -507,7 +507,7 @@ class EmailStore:
                 is_full
             FROM emails
             WHERE account_id=? AND folder=? AND remote_available=1
-            ORDER BY date DESC, CAST(uid AS INTEGER) DESC
+            ORDER BY date DESC, uid DESC
             LIMIT ? OFFSET ?
         """, (self.account_id, folder, limit, offset)).fetchall()
         return {
@@ -579,7 +579,7 @@ class EmailStore:
                 is_full
             FROM emails
             WHERE {where_sql}
-            ORDER BY date DESC, CAST(uid AS INTEGER) DESC
+            ORDER BY date DESC, uid DESC
             LIMIT ?
         """, [*params, limit]).fetchall()
 
